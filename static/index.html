@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Pasty</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- Syntax Highlighting -->
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+    >
+
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"
+        defer
+    ></script>
+
+    <script
+        src="/static/app.js"
+        defer
+    ></script>
+</head>
+
+<body>
+
+<main class="container">
+
+    <header>
+        <h1>Pasty</h1>
+        <p>Temporary pastes and files.</p>
+    </header>
+
+
+    <!-- CREATE VIEW -->
+
+    <section id="create-view">
+
+        <nav class="tabs">
+            <button
+                id="paste-tab"
+                class="tab active"
+                type="button"
+            >
+                Paste
+            </button>
+
+            <button
+                id="file-tab"
+                class="tab"
+                type="button"
+            >
+                File Drop
+            </button>
+        </nav>
+
+
+        <!-- PASTE -->
+
+        <section id="paste-panel">
+
+            <form id="paste-form">
+
+                <textarea
+                    id="paste-content"
+                    placeholder="Paste text or code here..."
+                    required
+                ></textarea>
+
+
+                <div class="options">
+
+                    <label>
+                        Language
+
+                        <select id="paste-language">
+                            <option value="plaintext">Plain Text</option>
+                            <option value="python">Python</option>
+                            <option value="javascript">JavaScript</option>
+                            <option value="typescript">TypeScript</option>
+                            <option value="java">Java</option>
+                            <option value="kotlin">Kotlin</option>
+                            <option value="rust">Rust</option>
+                            <option value="bash">Bash</option>
+                            <option value="json">JSON</option>
+                            <option value="yaml">YAML</option>
+                            <option value="html">HTML</option>
+                            <option value="css">CSS</option>
+                            <option value="sql">SQL</option>
+                        </select>
+                    </label>
+
+
+                    <label>
+                        Expires
+
+                        <select id="paste-expiration">
+                            <option value="10">10 minutes</option>
+                            <option value="60" selected>1 hour</option>
+                            <option value="360">6 hours</option>
+                            <option value="1440">1 day</option>
+                            <option value="10080">7 days</option>
+                            <option value="43200">30 days</option>
+                        </select>
+                    </label>
+
+
+                    <label>
+                        Password
+
+                        <input
+                            id="paste-password"
+                            type="password"
+                            placeholder="optional"
+                        >
+                    </label>
+
+                </div>
+
+
+                <button
+                    class="primary"
+                    type="submit"
+                >
+                    Create Paste
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <!-- FILE DROP -->
+
+        <section
+            id="file-panel"
+            class="hidden"
+        >
+
+            <form id="file-form">
+
+                <label
+                    id="drop-zone"
+                    class="drop-zone"
+                >
+                    <input
+                        id="file-input"
+                        type="file"
+                        hidden
+                    >
+
+                    <span id="drop-text">
+                        Drop file here or click to select
+                    </span>
+                </label>
+
+
+                <label>
+                    Expires
+
+                    <select id="file-expiration">
+                        <option value="10">10 minutes</option>
+                        <option value="60" selected>1 hour</option>
+                        <option value="360">6 hours</option>
+                        <option value="1440">1 day</option>
+                        <option value="10080">7 days</option>
+                    </select>
+                </label>
+
+
+                <button
+                    class="primary"
+                    type="submit"
+                >
+                    Upload
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <!-- RESULT -->
+
+        <section
+            id="result"
+            class="result hidden"
+        >
+
+            <h2>Done</h2>
+
+            <input
+                id="result-url"
+                readonly
+            >
+
+            <button
+                id="copy-result"
+                type="button"
+            >
+                Copy Link
+            </button>
+
+        </section>
+
+    </section>
+
+
+    <!-- PASTE DISPLAY -->
+
+    <section
+        id="paste-view"
+        class="hidden"
+    >
+
+        <div class="paste-toolbar">
+
+            <span id="paste-info"></span>
+
+            <div>
+                <button
+                    id="copy-paste"
+                    type="button"
+                >
+                    Copy
+                </button>
+
+                <a href="/">
+                    New Paste
+                </a>
+            </div>
+
+        </div>
+
+
+        <section
+            id="password-view"
+            class="hidden"
+        >
+
+            <h2>Password required</h2>
+
+            <form id="password-form">
+
+                <input
+                    id="password-input"
+                    type="password"
+                    placeholder="Password"
+                    required
+                >
+
+                <button
+                    class="primary"
+                    type="submit"
+                >
+                    Unlock
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <pre
+            id="paste-code-container"
+            class="hidden"
+        ><code id="paste-code"></code></pre>
+
+    </section>
+
+</main>
+
+</body>
+</html>

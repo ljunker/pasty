@@ -1,0 +1,12 @@
+services:
+  pasty:
+    build: .
+    container_name: pasty
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./data/uploads:/app/uploads
+      - ./data/tiny-pastebin.db:/app/tiny-pastebin.db
