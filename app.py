@@ -19,7 +19,7 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -204,10 +204,10 @@ app = FastAPI(
 )
 
 
-def secret_headers(path: str) -> dict[str, str]:
+def secret_headers(path: str, tab: str | None = None) -> dict[str, str]:
     if path == "/api/secrets" or path.startswith("/api/secrets/"):
         return {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
-    if path == "/secrets" or path.startswith("/s/"):
+    if path == "/secrets" or path.startswith("/s/") or (path == "/" and tab == "secret"):
         return {
             "Cache-Control": "no-store",
             "Referrer-Policy": "no-referrer",
@@ -219,7 +219,7 @@ def secret_headers(path: str) -> dict[str, str]:
 @app.middleware("http")
 async def protect_secret_responses(request: Request, call_next):
     response = await call_next(request)
-    response.headers.update(secret_headers(request.url.path))
+    response.headers.update(secret_headers(request.url.path, request.query_params.get("tab")))
     return response
 
 
@@ -228,7 +228,7 @@ async def internal_error(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"},
-        headers=secret_headers(request.url.path),
+        headers=secret_headers(request.url.path, request.query_params.get("tab")),
     )
 
 
@@ -653,8 +653,10 @@ app.mount(
 )
 
 
-@app.get("/")
-def index():
+@app.api_route("/", methods=["GET", "HEAD"])
+def index(request: Request):
+    if request.query_params.get("tab") == "secret":
+        return FileResponse(STATIC_DIR / "secret.html")
     return FileResponse(
         STATIC_DIR / "index.html"
     )
@@ -669,7 +671,7 @@ def paste_page(paste_id: str):
 
 @app.api_route("/secrets", methods=["GET", "HEAD"])
 def secret_create_page():
-    return FileResponse(STATIC_DIR / "secret.html")
+    return RedirectResponse("/?tab=secret", status_code=307)
 
 
 @app.api_route("/s/{secret_id}", methods=["GET", "HEAD"], name="secret_page")

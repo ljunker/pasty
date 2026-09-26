@@ -123,6 +123,7 @@ def test_maximum_sizes_and_duration(client):
 
 
 @pytest.mark.parametrize("path,method", [
+    ("/?tab=secret", "get"), ("/?tab=secret", "head"),
     ("/secrets", "get"), ("/s/unknown", "get"), ("/s/unknown", "head"),
     ("/api/secrets/unknown", "get"), ("/api/secrets/unknown", "head"),
     ("/api/secrets/unknown/reveal", "post"), ("/api/secrets", "get"),
@@ -136,6 +137,23 @@ def test_response_protection(client, path, method):
         if method == "get":
             assert "cdnjs" not in response.text
             assert 'src="/static/secret.js"' in response.text
+
+
+def test_secret_tab_routes_and_legacy_redirect(client):
+    for path in ["/", "/?tab=file"]:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert 'href="/?tab=secret"' in response.text
+        assert 'src="/static/app.js"' in response.text
+    secret_page = client.get("/?tab=secret")
+    assert secret_page.status_code == 200
+    assert 'href="/?tab=file"' in secret_page.text
+    assert 'href="/?tab=secret"' in secret_page.text
+    assert 'src="/static/app.js"' not in secret_page.text
+    legacy = client.get("/secrets", follow_redirects=False)
+    assert legacy.status_code == 307
+    assert legacy.headers["location"] == "/?tab=secret"
+    assert legacy.headers["cache-control"] == "no-store"
 
 
 def test_server_errors_are_not_cached(client, monkeypatch):

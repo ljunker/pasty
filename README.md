@@ -77,7 +77,8 @@ docker buildx build \
 
 ## One-Time Secrets
 
-Der Tab **One-Time Secret** öffnet `/secrets`. Dort können Texte bis 10 KiB
+Der Tab **One-Time Secret** öffnet `/?tab=secret`, entsprechend File Drop unter
+`/?tab=file`. Dort können Texte bis 10 KiB
 (10.240 UTF-8-Bytes) geteilt werden. Zeilenumbrüche und Leerzeichen bleiben erhalten.
 Standard ist ein einmaliger Abruf mit einer Stunde Laufzeit. Alternativ ist der
 Link bis zum Ablauf mehrfach nutzbar. Die Oberfläche bietet 10 Minuten, 1 Stunde,
