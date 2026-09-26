@@ -1,11 +1,11 @@
 services:
   pasty:
-    image: kryptikker/pasty:1.1.0
+    build: .
     container_name: pasty
     restart: unless-stopped
 
     ports:
-      - "127.0.0.1:41237:8000"
+      - "41237:8000"
 
     volumes:
       - ./data/uploads:/app/uploads

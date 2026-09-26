@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import hashlib
+import re
 import secrets
 import sqlite3
 import time
@@ -7,7 +9,7 @@ import time
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     FastAPI,
@@ -17,9 +19,9 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -28,6 +30,12 @@ DATABASE_FILE = BASE_DIR / "tiny-pastebin.db"
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB
 CHUNK_SIZE = 1024 * 1024  # 1 MB
+MAX_SECRET_BYTES = 10 * 1024
+SECRET_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
+    "connect-src 'self'; base-uri 'none'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
 
 def get_db():
     connection = sqlite3.connect(
@@ -65,6 +73,21 @@ def init_db():
                 expires_at INTEGER NOT NULL
             )
         """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS secrets (
+                id TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                ciphertext TEXT NOT NULL,
+                iv TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+        """)
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS secrets_expiry ON secrets (expires_at)"
+        )
 
         db.execute("PRAGMA journal_mode=WAL")
 
@@ -152,6 +175,8 @@ def cleanup_expired():
             (now,),
         )
 
+        db.execute("DELETE FROM secrets WHERE expires_at <= ?", (now,))
+
         db.commit()
 
 async def cleanup_loop():
@@ -177,6 +202,136 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+
+def secret_headers(path: str) -> dict[str, str]:
+    if path == "/api/secrets" or path.startswith("/api/secrets/"):
+        return {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+    if path == "/secrets" or path.startswith("/s/"):
+        return {
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": SECRET_CSP,
+        }
+    return {}
+
+
+@app.middleware("http")
+async def protect_secret_responses(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.update(secret_headers(request.url.path))
+    return response
+
+
+@app.exception_handler(Exception)
+async def internal_error(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+        headers=secret_headers(request.url.path),
+    )
+
+
+def validate_base64url(value: str, minimum: int, maximum: int) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        raise ValueError("Expected unpadded Base64url")
+    try:
+        decoded = base64.b64decode(
+            value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
+        )
+    except ValueError as exc:
+        raise ValueError("Invalid Base64url") from exc
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    if canonical != value or not minimum <= len(decoded) <= maximum:
+        raise ValueError("Invalid Base64url encoding or decoded size")
+    return value
+
+
+class SecretCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1]
+    ciphertext: str = Field(min_length=23, max_length=13675)
+    iv: str = Field(min_length=16, max_length=16)
+    mode: Literal["one_time", "until_expiry"] = "one_time"
+    expires_in_minutes: int = Field(default=60, ge=1, le=10080, strict=True)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def validate_version(cls, value):
+        if type(value) is not int or value != 1:
+            raise ValueError("Expected format version 1")
+        return value
+
+    @field_validator("ciphertext")
+    @classmethod
+    def validate_ciphertext(cls, value: str) -> str:
+        return validate_base64url(value, 17, MAX_SECRET_BYTES + 16)
+
+    @field_validator("iv")
+    @classmethod
+    def validate_iv(cls, value: str) -> str:
+        return validate_base64url(value, 12, 12)
+
+
+@app.post("/api/secrets")
+def create_secret(secret: SecretCreate, request: Request):
+    secret_id = secrets.token_urlsafe(32)
+    created_at = int(time.time())
+    expires_at = created_at + secret.expires_in_minutes * 60
+    with get_db() as db:
+        db.execute(
+            """
+            INSERT INTO secrets
+                (id, version, ciphertext, iv, mode, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                secret_id, secret.version, secret.ciphertext, secret.iv,
+                secret.mode, created_at, expires_at,
+            ),
+        )
+    return {
+        "id": secret_id,
+        "url": str(request.url_for("secret_page", secret_id=secret_id)),
+        "mode": secret.mode,
+        "expires_at": timestamp_to_iso(expires_at),
+    }
+
+
+@app.api_route("/api/secrets/{secret_id}", methods=["GET", "HEAD"])
+def get_secret_metadata(secret_id: str):
+    with get_db() as db:
+        item = db.execute(
+            "SELECT mode, expires_at FROM secrets WHERE id = ? AND expires_at > ?",
+            (secret_id, int(time.time())),
+        ).fetchone()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Secret not available")
+    return {
+        "mode": item["mode"],
+        "expires_at": timestamp_to_iso(item["expires_at"]),
+    }
+
+
+@app.post("/api/secrets/{secret_id}/reveal")
+def reveal_secret(secret_id: str):
+    with get_db() as db:
+        # Take the write lock before reading so concurrent workers cannot consume twice.
+        db.execute("BEGIN IMMEDIATE")
+        item = db.execute(
+            "SELECT * FROM secrets WHERE id = ? AND expires_at > ?",
+            (secret_id, int(time.time())),
+        ).fetchone()
+        if item is None:
+            raise HTTPException(status_code=404, detail="Secret not available")
+        if item["mode"] == "one_time":
+            db.execute("DELETE FROM secrets WHERE id = ?", (secret_id,))
+    return {
+        "version": item["version"],
+        "ciphertext": item["ciphertext"],
+        "iv": item["iv"],
+    }
 
 class PasteCreate(BaseModel):
     content: str = Field(
@@ -510,3 +665,13 @@ def paste_page(paste_id: str):
     return FileResponse(
         STATIC_DIR / "index.html"
     )
+
+
+@app.api_route("/secrets", methods=["GET", "HEAD"])
+def secret_create_page():
+    return FileResponse(STATIC_DIR / "secret.html")
+
+
+@app.api_route("/s/{secret_id}", methods=["GET", "HEAD"], name="secret_page")
+def secret_page(secret_id: str):
+    return FileResponse(STATIC_DIR / "secret.html")

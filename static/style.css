@@ -60,6 +60,7 @@ header p {
     cursor: pointer;
 
     font-size: 1rem;
+    text-decoration: none;
 }
 
 .tab.active {
@@ -259,4 +260,48 @@ pre code {
 
 .hidden {
     display: none !important;
+}
+
+.secret-text {
+    min-height: 180px;
+}
+
+.secret-note {
+    color: #8b949e;
+    line-height: 1.5;
+}
+
+.secret-status {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #f0b272;
+}
+
+.secret-content {
+    padding: 20px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.secret-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.secret-actions a {
+    color: #58a6ff;
+    align-self: center;
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+    .tabs {
+        flex-wrap: wrap;
+    }
 }

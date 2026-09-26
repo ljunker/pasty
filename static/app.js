@@ -506,6 +506,10 @@ function init() {
 
     pasteView.classList.add("hidden");
 
+    if (new URLSearchParams(window.location.search).get("tab") === "file") {
+        fileTab.click();
+    }
+
 }
 
 
