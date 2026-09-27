@@ -1,6 +1,6 @@
 services:
   pasty:
-    image: kryptikker/pasty:1.1.1
+    image: kryptikker/pasty:1.1.2
     container_name: pasty
     restart: unless-stopped
 

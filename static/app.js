@@ -134,129 +134,167 @@ pasteForm.addEventListener("submit", async event => {
  * File upload
  */
 
-fileForm.addEventListener("submit", async event => {
+const uploadButton = fileForm.querySelector('button[type="submit"]');
+const fileExpiration = document.querySelector("#file-expiration");
+const uploadProgress = document.querySelector("#upload-progress");
+const uploadStatus = document.querySelector("#upload-status");
+const uploadDetails = document.querySelector("#upload-details");
+let uploadActive = false;
 
+function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function setUploadStatus(message, error = false) {
+    uploadStatus.textContent = message;
+    uploadStatus.classList.toggle("error", error);
+}
+
+function setUploadActive(active) {
+    uploadActive = active;
+    fileInput.disabled = active;
+    fileExpiration.disabled = active;
+    uploadButton.disabled = active;
+    uploadButton.textContent = active ? "Uploading…" : "Upload";
+    fileForm.setAttribute("aria-busy", String(active));
+    dropZone.setAttribute("aria-disabled", String(active));
+    dropZone.classList.remove("dragging");
+}
+
+function updateFileSelection() {
+    const file = fileInput.files[0];
+    dropText.textContent = file
+        ? `${file.name} (${formatBytes(file.size)})`
+        : "Drop file here or click to select";
+    uploadProgress.classList.add("hidden");
+    uploadProgress.value = 0;
+    uploadDetails.textContent = "";
+    setUploadStatus(file ? "Ready to upload." : "");
+}
+
+fileForm.addEventListener("submit", event => {
     event.preventDefault();
+    if (uploadActive) return;
 
     const file = fileInput.files[0];
-
     if (!file) {
-
-        alert("Please select a file.");
-
+        setUploadStatus("Please select a file.", true);
         return;
     }
-
-
-    const expires =
-        document.querySelector(
-            "#file-expiration"
-        ).value;
-
 
     const formData = new FormData();
+    formData.append("file", file);
+    formData.append("expires_in_minutes", fileExpiration.value);
 
-    formData.append(
-        "file",
-        file
-    );
+    result.classList.add("hidden");
+    resultUrl.value = "";
+    uploadDetails.textContent = "";
+    uploadProgress.value = 0;
+    uploadProgress.classList.remove("hidden");
+    setUploadStatus("Uploading…");
+    setUploadActive(true);
 
-    formData.append(
-        "expires_in_minutes",
-        expires
-    );
-
-
-    const response = await fetch(
-        "/api/files",
-        {
-            method: "POST",
-            body: formData
+    const request = new XMLHttpRequest();
+    request.upload.addEventListener("progress", event => {
+        if (event.lengthComputable && event.total > 0) {
+            const percent = Math.min(100, Math.floor(event.loaded / event.total * 100));
+            uploadProgress.value = percent;
+            uploadDetails.textContent = `${percent}% · ${formatBytes(event.loaded)} / ${formatBytes(event.total)} transferred (including upload metadata)`;
+        } else {
+            uploadProgress.removeAttribute("value");
+            uploadDetails.textContent = `${formatBytes(event.loaded)} transferred`;
         }
-    );
+    });
+    request.upload.addEventListener("load", () => {
+        uploadProgress.removeAttribute("value");
+        setUploadStatus("Upload complete. Processing…");
+    });
+    request.addEventListener("load", () => {
+        let data;
+        try {
+            data = JSON.parse(request.responseText);
+        } catch {
+            setUploadStatus(
+                request.status >= 200 && request.status < 300
+                    ? "Upload failed: invalid server response. Please try again."
+                    : `Upload failed (HTTP ${request.status}). Please try again.`,
+                true
+            );
+            return;
+        }
+        if (request.status < 200 || request.status >= 300) {
+            setUploadStatus(
+                typeof data?.detail === "string"
+                    ? data.detail
+                    : `Upload failed (HTTP ${request.status}). Please try again.`,
+                true
+            );
+            return;
+        }
+        if (typeof data?.url !== "string" || !data.url.trim()) {
+            setUploadStatus("Upload failed: invalid server response. Please try again.", true);
+            return;
+        }
+        uploadProgress.value = 100;
+        setUploadStatus("Upload successful. Your download link is ready.");
+        showResult(data.url);
+    });
+    request.addEventListener("error", () => {
+        setUploadStatus("Upload failed: network error. Check your connection and try again.", true);
+    });
+    request.addEventListener("abort", () => {
+        setUploadStatus("Upload interrupted. Please try again.", true);
+    });
+    request.addEventListener("loadend", () => {
+        if (uploadStatus.classList.contains("error")) {
+            uploadProgress.classList.add("hidden");
+        }
+        setUploadActive(false);
+    });
 
-
-    if (!response.ok) {
-
-        const error = await response.json();
-
-        alert(
-            error.detail ??
-            "Upload failed."
-        );
-
-        return;
+    try {
+        request.open("POST", "/api/files");
+        request.send(formData);
+    } catch {
+        setUploadStatus("Could not start upload. Please try again.", true);
+        uploadProgress.classList.add("hidden");
+        setUploadActive(false);
     }
-
-
-    const data = await response.json();
-
-    showResult(data.url);
-
 });
-
 
 /*
  * File drop
  */
 
 fileInput.addEventListener("change", () => {
-
-    const file = fileInput.files[0];
-
-    if (file) {
-        dropText.textContent = file.name;
-    }
-
+    if (!uploadActive) updateFileSelection();
 });
 
-
-dropZone.addEventListener(
-    "dragover",
-    event => {
-
+dropZone.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-
-        dropZone.classList.add("dragging");
-
+        if (!uploadActive) fileInput.click();
     }
-);
+});
 
+dropZone.addEventListener("dragover", event => {
+    event.preventDefault();
+    if (!uploadActive) dropZone.classList.add("dragging");
+});
 
-dropZone.addEventListener(
-    "dragleave",
-    () => {
+dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("dragging");
+});
 
-        dropZone.classList.remove("dragging");
-
-    }
-);
-
-
-dropZone.addEventListener(
-    "drop",
-    event => {
-
-        event.preventDefault();
-
-        dropZone.classList.remove("dragging");
-
-
-        const files =
-            event.dataTransfer.files;
-
-        if (files.length === 0) {
-            return;
-        }
-
-
-        fileInput.files = files;
-
-        dropText.textContent =
-            files[0].name;
-
-    }
-);
+dropZone.addEventListener("drop", event => {
+    event.preventDefault();
+    dropZone.classList.remove("dragging");
+    if (uploadActive || event.dataTransfer.files.length === 0) return;
+    fileInput.files = event.dataTransfer.files;
+    updateFileSelection();
+});
 
 
 /*

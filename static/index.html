@@ -148,6 +148,9 @@
                 <label
                     id="drop-zone"
                     class="drop-zone"
+                    role="button"
+                    tabindex="0"
+                    aria-label="Choose file to upload"
                 >
                     <input
                         id="file-input"
@@ -180,6 +183,18 @@
                 >
                     Upload
                 </button>
+
+                <div class="upload-feedback">
+                    <progress
+                        id="upload-progress"
+                        class="hidden"
+                        max="100"
+                        value="0"
+                        aria-label="File upload progress"
+                    ></progress>
+                    <p id="upload-details"></p>
+                    <p id="upload-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                </div>
 
             </form>
 
